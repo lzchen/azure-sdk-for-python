@@ -1,4 +1,4 @@
-if ((Get-ChildItem -Path Function: | ? { $_.Name -eq "LogWarning" }).Count -eq 0) {
+if (!(Test-Path Function:LogWarning)) {
   . "${PSScriptRoot}\logging.ps1"
 }
 
