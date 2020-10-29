@@ -1,4 +1,5 @@
 # Common Changelog Operations
+if (!(Test-Path Function:LogWarning)) { . "${PSScriptRoot}\logging.ps1" }
 
 $RELEASE_TITLE_REGEX = "(?<releaseNoteTitle>^\#+.*(?<version>\b\d+\.\d+\.\d+([^0-9\s][^\s:]+)?)(\s(?<releaseStatus>\(Unreleased\)|\(\d{4}-\d{2}-\d{2}\)))?)"
 
@@ -22,7 +23,7 @@ function Get-ChangeLogEntries {
     foreach ($line in $contents) {
       if ($line -match $RELEASE_TITLE_REGEX) {
         $changeLogEntry = New-ChangeLogEntry -Version $matches["version"] -Status $matches["releaseStatus"] `
-        -Title $line -Content @()
+        -Title $line
         $changeLogEntries[$changeLogEntry.ReleaseVersion] = $changeLogEntry
       }
       else {
@@ -121,19 +122,35 @@ function Confirm-ChangeLogEntry {
 function New-ChangeLogEntry {
   param (
     [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
     [String]$Version,
-    [Parameter(Mandatory = $true)]
-    [ValidateScript({$_.StartsWith('(') -and $_.EndsWith(')')})]
-    [String]$Status,
+    [String]$Status="(Unreleased)",
     [String]$Title,
     [String[]]$Content
   )
 
+  # Validate relase Status
+  $Status = $Status.Trim().Trim("()")
+  if ($Status -ne "Unreleased") {
+    $dateFormat = "yyyy-MM-dd"
+    $provider = [System.Globalization.CultureInfo]::InvariantCulture
+    try {
+      $Status = ([System.DateTime]::ParseExact($Status, $dateFormat, $provider)).ToString($dateFormat)
+    }
+    catch {
+        LogWarning "Invalid date [ $Status ] passed as status. Please use a valid date in the format '$dateFormat' or use '(Unreleased)'"
+    }
+  }
+
+  $Status = "($Status)"
+  if ($null -eq $Content) { $Content = @() }
+  if ($null -eq $Title) { $Title = "## $Version $Status" }
+
   $newChangeLogEntry = [pscustomobject]@{ 
     ReleaseVersion = $Version
     ReleaseStatus  = $Status
-    ReleaseTitle   = If ($Title) { $Title } Else { "## $Version $Status"}
-    ReleaseContent = If ($Content) { $Content } Else { @("") }
+    ReleaseTitle   = $Title
+    ReleaseContent = $Content
   }
 
   return $newChangeLogEntry
@@ -143,6 +160,8 @@ function Add-ChangeLogEntry {
   param (
     [Parameter(Mandatory = $false)]
     [Hashtable]$ChangeLogEntries,
+    [Parameter(Mandatory = $true)]
+    [String]$ChangeLogLocation,
     [Parameter(Mandatory = $true)]
     [String]$NewEntryVersion,
     [String]$NewEntryReleaseStatus="(Unreleased)",
@@ -158,13 +177,16 @@ function Add-ChangeLogEntry {
   $newChangeLogEntry = New-ChangeLogEntry -Version $NewEntryVersion -Status $NewEntryReleaseStatus `
   -Content $NewEntryContent
   $ChangeLogEntries.Add($NewEntryVersion,$newChangeLogEntry)
-  return $ChangeLogEntries
+  
+  Set-ChangeLogContent -ChangeLogLocation $ChangeLogLocation -ChangeLogEntries $ChangeLogEntries
 }
 
 function Edit-ChangeLogEntry {
   param (
     [Parameter(Mandatory = $true)]
     [Hashtable]$ChangeLogEntries,
+    [Parameter(Mandatory = $true)]
+    [String]$ChangeLogLocation,
     [Parameter(Mandatory = $true)]
     [string]$VersionToEdit,
     [String]$NewEntryReleaseVersion,
@@ -175,7 +197,8 @@ function Edit-ChangeLogEntry {
   if ($NewEntryReleaseVersion) { $ChangeLogEntries[$VersionToEdit].ReleaseVersion = $NewEntryReleaseVersion }
   if ($NewEntryReleaseStatus) {$ChangeLogEntries[$VersionToEdit].ReleaseStatus = $NewEntryReleaseStatus }
   if ($NewEntryReleaseContent) {$ChangeLogEntries[$VersionToEdit].ReleaseContent = $NewEntryReleaseContent }
-  return $ChangeLogEntries
+
+  Set-ChangeLogContent -ChangeLogLocation $ChangeLogLocation -ChangeLogEntries $ChangeLogEntries
 }
 
 function Set-ChangeLogContent {
@@ -186,23 +209,22 @@ function Set-ChangeLogContent {
     $ChangeLogEntries
   )
 
-  $changeLogContent = @()
-  $changeLogContent += "# Release History"
-  
   try {
-    [AzureEngSemanticVersion]
+    $var = [AzureEngSemanticVersion]
   }
   catch {
-    . "${PSScriptRoot}\SemVer.ps1."
+    . "${PSScriptRoot}\SemVer.ps1"
   }
+
+  $changeLogContent = @()
+  $changeLogContent += "# Release History"
 
   $VersionsSorted = [AzureEngSemanticVersion]::SortVersionStrings($ChangeLogEntries.Keys)
   foreach ($version in $VersionsSorted) {
     $changeLogEntry = $ChangeLogEntries[$version]
     $changeLogContent += $changeLogEntry.ReleaseTitle
-    foreach ($line in $changeLogEntry.ReleaseContent) {
-      $changeLogContent += $line
-    }
+    $changeLogContent += ""
+    $changeLogContent += $changeLogEntry.ReleaseContent
     $changeLogContent += ""
   }
 

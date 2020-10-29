@@ -39,7 +39,7 @@ Begin {
     if ($ReleaseDate)
     {
         try {
-            $ReleaseStatus = ([System.DateTime]::ParseExact($ReleaseDate, $dateFormat, $provider)).ToString($dateFormat)
+            $ReleaseStatus = "({0})" -f ([System.DateTime]::ParseExact($ReleaseDate, $dateFormat, $provider)).ToString($dateFormat)
         }
         catch {
             LogError "Invalid Release date. Please use a valid date in the format '$dateFormat'"
