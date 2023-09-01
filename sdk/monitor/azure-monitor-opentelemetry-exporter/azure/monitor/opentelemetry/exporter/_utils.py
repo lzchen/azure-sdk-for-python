@@ -8,12 +8,6 @@ import platform
 import threading
 import time
 
-try:
-    from importlib.metadata import version
-except ImportError:
-    # fallback for python 3.7
-    from importlib_metadata import version
-
 from opentelemetry.semconv.resource import ResourceAttributes
 from opentelemetry.sdk.util import ns_to_iso_str
 
